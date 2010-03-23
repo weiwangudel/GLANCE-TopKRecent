@@ -33,6 +33,9 @@ struct dir_node
 struct timeval start;
 struct timeval end;
 
+select_condition;  /* this records current standard of topk: -10000000 
+				    * means the modification time within... such semantics*/
+
 double est_total;
 long int sample_times;
 long int qcost = 0;
@@ -54,6 +57,7 @@ static char *dup_str(const char *s);
 int begin_estimate_from(struct dir_node *rootPtr);
 int check_type(const struct dirent *entry);
 void fast_subdirs(struct dir_node *curDirPtr);
+long int new_count(int argc, char* argv[]);
 
 /* why do I have to redefine to avoid the warning of get_current_dir_name? */
 char *get_current_dir_name(void);
@@ -69,6 +73,10 @@ char proc_working_dir[100];
 
 int main(int argc, char* argv[]) 
 {
+	new_count(argc, argv);
+}
+long int new_count(int argc, char* argv[]) 
+{
 	long int i;
 	struct dir_node *rootPtr;
 
@@ -78,6 +86,9 @@ int main(int argc, char* argv[])
 	struct timeval sample_start;
 	struct timeval sample_end;
 	char *root_abs_name;
+	double sum_of_error = 0;
+	double sum_of_qcost = 0;
+	double sum_of_est = 0;
 	
 	signal(SIGKILL, CleanExit);
 	signal(SIGTERM, CleanExit);
@@ -113,6 +124,7 @@ int main(int argc, char* argv[])
 	
 	/* this can support relative path easily */
     root_abs_name = dup_str(get_current_dir_name());	
+
 	sample_times = atol(argv[1]);
 	assert(sample_times <= MAX_DRILL_DOWN);
 
@@ -162,33 +174,30 @@ int main(int argc, char* argv[])
 		gettimeofday(&sample_end, NULL);				
 	}
 
-	chdir("/tmp");	  /* this is for the output of gprof */
-	
 	printf("%s\t", root_abs_name);
 	printf("%d\t%d\t%f\t", g_level_thresh, g_sdir_thresh, g_percentage);
 
-	double mean = 0;
-	//double not_abs = 0;
+
 	for (i=0; i < sample_times; i++)
 	{	
-		mean += abs(est_array[i] - g_file); 
-		//not_abs += est_array[i] - g_file;
+		sum_of_error += abs(est_array[i] - g_file); 
+		sum_of_est += est_array[i];
 	}
-	mean /= sample_times;
-
 	
-    printf("%.6f\t", mean/g_file);
+    printf("%.6f\t", sum_of_error/sample_times/g_file);
  
-	mean = 0;
+	sum_of_qcost = 0;
 	for (i=0; i < sample_times; i++)
 	{	
-		mean += qcost_array[i]; 
+		sum_of_qcost += qcost_array[i]; 
 	}
-	mean /= sample_times;
 
-	printf("%.4f\t", mean/g_folder);
+	printf("%.4f\t", sum_of_qcost/sample_times/g_folder);
 
   	clearQueue(&level_q);
+
+	/* return est_number of every aggregate query */
+	return (long int) (sum_of_est / sample_times); 
 	CleanExit (2);
 }
 
@@ -291,7 +300,9 @@ void fast_subdirs(struct dir_node *curDirPtr)
     long int  sub_dir_num = 0;
     long int  sub_file_num = 0;
 
-    struct dirent **namelist;
+    struct dirent **dir_namelist;
+	struct dirent **file_namelist;
+	
     char *path;
     size_t alloc;
     int total_num;
@@ -322,10 +333,9 @@ void fast_subdirs(struct dir_node *curDirPtr)
     total_num = scandir(path, &namelist, 0, 0);
 
 	/* root is given like the absolute path regardless of the cur_dir */
-    sub_dir_num = scandir(path, &namelist, check_type, 0);
+    sub_dir_num = scandir(path, &dir_namelist, check_type, 0);
+	sub_file_num = scandir(path, &file_namelist, get_eligible_file, 0);
 
-
-	sub_file_num = total_num - sub_dir_num;
  	alloc = sub_dir_num - 2;
 	used = 0;
 
@@ -385,6 +395,17 @@ int check_type(const struct dirent *entry)
         return 0;
 }
 
+int get_eligible_file(const struct dirent *entry)
+{
+//	do we have to use stat function?;	
+	select_condition = 
+	
+}
+
+int analyze_aggregate_results()
+{
+	
+}
 
 /************************SIMPLE MATH WORK**********************************/
 int min(int a, int b)
@@ -431,11 +452,11 @@ void CleanExit(int sig)
     fflush(stdout);
     gettimeofday(&end, NULL ); 
     
-/*
+
     if (sig != SIGHUP)
         printf("\nExiting...\n");
     else
-        printf("\nRestaring...\n");
+        printf("\nRestarting...\n");
 
 
     puts("\n\n=============================================================");
@@ -446,7 +467,7 @@ void CleanExit(int sig)
 	(end.tv_sec-start.tv_sec)*1000+(end.tv_usec-start.tv_usec)/1000);
     printf("Total Time:%ld seconds\n", 
 	(end.tv_sec-start.tv_sec)*1+(end.tv_usec-start.tv_usec)/1000000);
-*/
+
 	
 	printf("%ld\n", 
     (end.tv_sec-start.tv_sec)*1+(end.tv_usec-start.tv_usec)/1000000);
