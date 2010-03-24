@@ -618,25 +618,18 @@ int o_begin_sample_from(
 		if (sub_dir_num > 0)
 		{
 			prob = prob / sub_dir_num;
-			if (prob < old_prob / 10000)
-			{
-				int i;
-				for (i = 0; i < 100; i++)
-				{
-					begin_sample_from(get_current_dir_name(), 
-					    curPtr,
-					    prob*100);
-				}
-				if (((int) old_prob) == 1)
-					est_num++;
-				chdir(sample_root);
-				bool_sdone = 1;
-				continue;
-			}
+
+			/*......deleted divide and conquer.......*/
+
+			/* stack in */
+			g_stack_array[g_stack_top] = curPtr;
+			g_stack_top++;
 			
 			int temp = random_next(sub_dir_num);
 			cur_parent = dup_str(curPtr->sdirStruct[temp].dir_name);
-			curPtr = &curPtr ->sdirStruct[temp];		
+			curPtr = &curPtr ->sdirStruct[temp];
+
+			
 		}
 		
 		/* leaf directory, end the drill down */
@@ -771,19 +764,6 @@ void get_all_subdirs(
 	curPtr->bool_dir_covered = 1;
     closedir(dir);
 
-	 /* previous approach to prevent memory leak  
-error_free:
-    while (used--) 
-	{
-        free(s_dirs[used]);
-    }
-    free(s_dirs);
- 
-error_close:
-    closedir(dir);
- 
-error:
-    return NULL;   */
 }
 
 
