@@ -40,10 +40,6 @@ struct dir_node
 struct timeval start;
 struct timeval end;
 
-double g_select_cond;  /* this records current standard of topk: -10000000 
-					    * means the modification time within... such semantics
- 						* in units of seconds
- 						*/
 double est_total;
 long int sample_times;
 long int qcost = 0;
@@ -103,7 +99,9 @@ void permutation(int size);
 int main(int argc, char* argv[]) 
 {
 	time(&g_prog_start_time);
+	
 	old_count_for_topk(argc, argv);
+	
 	return EXIT_SUCCESS;
 }
 
@@ -209,6 +207,7 @@ void CleanExit(int sig)
     puts("\n\n=============================================================");
 //	printf("\ndirs newly opened %ld\ndirs already_covered %ld\n",
 //			newly_covered, already_covered);
+	printf("\n %ld dirs traversed\n", qcost);
     puts("=============================================================");
     printf("Total Time:%ld milliseconds\n", 
 	(end.tv_sec-start.tv_sec)*1000+(end.tv_usec-start.tv_usec)/1000);
@@ -508,6 +507,7 @@ void collect_topk(struct dir_node *rootPtr)
 			/* find the eligible dirs and files for record (into queue)
 			 * and output (to display */
 			record_dir_output_file(cur_dir);
+			qcost++;			/* number of directories covered increment */
         }
 		struct dir_node *temp;
         for (; emptyQueue(&tempvec) != 1; )
