@@ -51,14 +51,6 @@ long int qcost = 0;
 long int already_covered = 0;
 long int newly_covered = 0;
 
-/* program parameters */
-long int g_folder;
-long int g_file;
-long int g_qcost_thresh;  /* smaller than this value, we crawl */
-unsigned int g_level_thresh; /* int because level is not so large */
-unsigned int g_sdir_thresh; /* para2: sub dir threshold */
-double g_percentage; /* how large percent to randomly choose */
-
 /* MAC(modify, access, change) related topk */
 int g_k_elem;
 time_t g_prog_start_time;
@@ -99,7 +91,7 @@ void record_dir_output_file(struct dir_node *curPtr);
 void o_get_subdirs(const char *path, struct dir_node *curPtr);	
 int o_begin_sample_from(const char *sample_root, struct dir_node *curPtr);
 void set_range(int top);
-int n_get_eligible_file(const struct dirent *entry);
+int get_eligible_file(const struct dirent *entry);
 void collect_topk();
 int old_count_for_topk(int argc, char **argv);
 
@@ -112,209 +104,7 @@ void permutation(int size);
 
 int main(int argc, char* argv[]) 
 {
-	/* Get top K */
-	if (argc == 10)
-	{
-		g_k_elem = atoi(argv[9]);
-		new_count_for_topk(argc, argv);
-	}
-
 	old_count_for_topk(argc, argv);
-	return EXIT_SUCCESS;
-}
-
-long int new_count_for_topk(int argc, char* argv[]) 
-{
-	long int i;
-	struct dir_node *rootPtr;
-
-	struct dir_node root_dir; /* root directory for estimation */
-	struct timeval sample_start;
-	struct timeval sample_end;
-	char *root_abs_name;
-	double sum_of_error = 0;
-	double sum_of_qcost = 0;
-	double sum_of_est = 0;
-	
-	signal(SIGKILL, CleanExit);
-	signal(SIGTERM, CleanExit);
-	signal(SIGINT, CleanExit);
-	signal(SIGQUIT, CleanExit);
-	signal(SIGHUP, CleanExit);
-
-	/* current time as start time of the program */
-  	g_prog_start_time = time(NULL);
-	
-	/* start timer */
-	gettimeofday(&start, NULL ); 
-
-	if (argc < 9)
-	{
-		printf("Usage: %s \n", argv[0]);
-		printf("arg 1: drill down times (<100)\n");
-		printf("arg 2: file system dir (can be relative path now)\n");
-		printf("arg 3: real dirs\n");
-		printf("arg 4: real file number\n");
-		printf("arg 5: crawl qcost threshold\n");
-		printf("arg 6: crawl level threshold\n");
-		printf("if only qcost, then level = 0\n");
-		printf("if only level, then qcost = 0\n");
-		printf("don't use both > 0\n");
-		printf("arg 7: sub_dir_num for max(sub_dir_num, **)\n");
-		printf("arg 8: percentage chosen, 2 means 50 percent\n"); 
-		return EXIT_FAILURE; 
-	}
-	if (chdir(argv[2]) != 0)
-	{
-		printf("Error when chdir to %s", argv[2]);
-		return EXIT_FAILURE; 
-	}
-	
-	/* this can support relative path easily */
-    root_abs_name = dup_str(get_current_dir_name());	
-
-	sample_times = atol(argv[1]);
-	assert(sample_times <= MAX_DRILL_DOWN);
-
-	g_folder = atol(argv[3]);
-	g_file = atol(argv[4]);
-	g_qcost_thresh = atol(argv[5]); 
-	g_level_thresh = atoi(argv[6]);
-	g_sdir_thresh = atoi(argv[7]);
-	g_percentage = atof(argv[8]);
-
-	assert(g_qcost_thresh*g_level_thresh == 0);
-
-	/* initialize the value */
-	{
-        est_total = 0;
-        initQueue(&level_q);
-	}
-
-	/* Initialize the dir_node struct */
-	rootPtr = &root_dir;
-	rootPtr->bool_dir_explored = 0;
-	rootPtr->sdirStruct = NULL;
-    rootPtr->dir_abs_path = dup_str(root_abs_name);
-
-	int seed;
-	srand(seed = (int)time(0));//different seed number for random function
-
-	double * est_array = malloc(sample_times * sizeof (double));
-	long int * qcost_array = malloc (sample_times * sizeof (long int ));
-
-	g_select_cond = 1/24 * 1* 24 * 60 * 60;  /* one day */
-	
-	/* start estimation */
-	for (i=0; i < sample_times; i++)
-	{		
-		gettimeofday(&sample_start, NULL);
-	 	n_begin_estimate_from(rootPtr);
-		est_array[i] = est_total;
-		qcost_array[i] = qcost;
-		est_total = 0;
-	    qcost = 0;		
-		rootPtr->bool_dir_explored = 0;
-		rootPtr->sdirStruct = NULL;
-    	rootPtr->dir_abs_path = dup_str(root_abs_name);
-		root_flag = 0;
-		gettimeofday(&sample_end, NULL);				
-	}
-
-	printf("%s\t", root_abs_name);
-	//printf("%d\t%d\t%f\t", g_level_thresh, g_sdir_thresh, g_percentage);
-
-
-	for (i=0; i < sample_times; i++)
-	{	
-		sum_of_error += abs(est_array[i] - g_file); 
-		sum_of_est += est_array[i];
-	}
-	
-    printf("%.6f\t", sum_of_error/sample_times/g_file);
- 
-	sum_of_qcost = 0;
-	for (i=0; i < sample_times; i++)
-	{	
-		sum_of_qcost += qcost_array[i]; 
-	}
-
-//	printf("%.4f\t", sum_of_qcost/sample_times/g_folder);
-	printf("%.4f\n", sum_of_qcost/sample_times/g_folder);
-	
-  	clearQueue(&level_q);
-
-	/* return est_number of every aggregate query */
-	return (long int) (sum_of_est / sample_times); 
-	CleanExit (2);
-}
-
-
-
-/* Before calling begin_estimate_from
- * the dir_node struct has been allocated for root
- */
-int n_begin_estimate_from(struct dir_node *rootPtr)
-{
-    int level = 0;  /* root is in level 1 */
-    int clength;
-    int vlength;
-    struct queueLK tempvec;
-    struct dir_node *cur_dir = NULL;
-	            
-    /* root_dir goes to queue */
-    enQueue(&level_q, rootPtr);
-    
-
-    /* if queue is not empty */
-    while (emptyQueue(&level_q) != 1)    
-    {
-        level++;
-        initQueue(&tempvec);
-        /* for all dirs currently in the queue 
-         * these dirs should be in the same level 
-         */
-        for (; emptyQueue(&level_q) != 1; )
-        {
-            cur_dir = outQueue(&level_q);
-			
-            /* level ordering, change directory is a big problem 
-             * currently save the absolute direcotory of each folder 
-             */
-            n_fast_subdirs(cur_dir);
-            qcost++;
-            est_total = est_total + cur_dir->sub_file_num * cur_dir->factor;
-            
-            if (cur_dir->sub_dir_num > 0)
-            {
-                
-                vlength = cur_dir->sub_dir_num;
-
-				/* (g_qcost_thresh * g_level_thresh) should always be 0 */
-				if ((qcost > g_qcost_thresh) && level > g_level_thresh)
-                    clength = min (vlength, 
-						max(g_sdir_thresh, floor(vlength/g_percentage)));
-                else 
-                    clength = vlength;
-                
-                /* choose clength number of folders to add to queue */
-                /* need to use permutation */
-                permutation(vlength);
-                int i;
-                for (i = 0; i < clength; i++)
-                {  
-                    cur_dir->sdirStruct[ar[i]].factor *= vlength*1.0/clength;
-                    enQueue(&tempvec, &cur_dir->sdirStruct[ar[i]]);
-                }
-            }
-        }
-		struct dir_node *temp;
-        for (; emptyQueue(&tempvec) != 1; )
-        {
-            temp = outQueue(&tempvec);
-            enQueue(&level_q, temp);            
-        }  
-    }  
 	return EXIT_SUCCESS;
 }
 
@@ -329,93 +119,6 @@ static char *dup_str(const char *s)
     return t;
 }
 
-void n_fast_subdirs(struct dir_node *curDirPtr) 
-{
-    long int  sub_dir_num = 0;
-    long int  sub_file_num = 0;
-
-    struct dirent **dir_namelist;
-	struct dirent **file_namelist;
-	
-    char *path;
-    size_t alloc;
-	int used = 0;
-
-    if (root_flag == 0)
-	{	
-		curDirPtr->factor = 1.0;
-		root_flag = 1;
-	}
-	/* already stored the subdirs struct before
-	 * no need to scan the dir again */
-	if (curDirPtr->bool_dir_explored == 1)
-	{
-		/* This change dir is really important */
-		already_covered++;
-		chdir(path);		/** might be a problem here for the count */;
-	}
-		
-	/* so we have to scan */
-	newly_covered++;
-    
-    path = curDirPtr->dir_abs_path;
-	chdir(path);	
-
-	/* root is given like the absolute path regardless of the cur_dir */
-    sub_dir_num = scandir(path, &dir_namelist, check_type, 0);
-	sub_file_num = scandir(path, &file_namelist, n_get_eligible_file, 0);
-
- 	alloc = sub_dir_num - 2;
-	used = 0;
-
- 	assert(alloc >= 0);
-
-    if (alloc > 0 && !(curDirPtr->sdirStruct
-			= malloc(alloc * sizeof (struct dir_node)) )) 
-	{
-        //goto error_close;
-		printf("malloc error!\n");
-		exit(-1);
-    }
-    
-    int temp = 0;
-
-	for (temp = 0; temp < alloc; temp++)
-	{
-		curDirPtr->sdirStruct[temp].sub_dir_num = 0;
-		curDirPtr->sdirStruct[temp].sub_file_num = 0;
-		curDirPtr->sdirStruct[temp].bool_dir_explored = 0;
-	}
-
-
-	/* scan the namelist */
-    for (temp = 0; temp < sub_dir_num; temp++)
-    {
-		if ((strcmp(dir_namelist[temp]->d_name, ".") == 0) ||
-                        (strcmp(dir_namelist[temp]->d_name, "..") == 0))
-               continue;
-        /* get the absolute path for sub_dirs */
-        chdir(dir_namelist[temp]->d_name);
-        
-   		if (!(curDirPtr->sdirStruct[used].dir_abs_path 
-		       = dup_str(get_current_dir_name()))) 
-		{
-			printf("get name error!!!!\n");
-    	}
-        curDirPtr->sdirStruct[used].factor = curDirPtr->factor;
-		used++;
-        chdir(path);		
-	}
-
-	sub_dir_num -= 2;
-
-	curDirPtr->sub_file_num = sub_file_num;
-	curDirPtr->sub_dir_num = sub_dir_num;
-	/* update bool_dir_explored info */
-	curDirPtr->bool_dir_explored = 1;
-}
-
-
 int check_type(const struct dirent *entry)
 {
     if (entry->d_type == DT_DIR)
@@ -425,7 +128,7 @@ int check_type(const struct dirent *entry)
 }
 
 /* Get MAC timestamp using stat struct */
-int n_get_eligible_file(const struct dirent *entry)
+int get_eligible_file(const struct dirent *entry)
 {
 	struct stat stat_buf;
 	double diff;
@@ -567,6 +270,7 @@ int old_count_for_topk(int argc, char **argv)
 	curPtr = &root;
 	curPtr->bool_dir_explored = 0;
 	curPtr->sdirStruct = NULL;
+	curPtr->dir_abs_path = dup_str(root_abs_name);
 	
 	srand((int)time(0));//different seed number for random function
 
@@ -577,7 +281,7 @@ int old_count_for_topk(int argc, char **argv)
 		o_begin_sample_from(root_abs_name, curPtr);
 		curPtr = &root;
 	}
-
+	printf("begin_sample_from end\n");
 	/* get whatever the result of given range is */
 	collect_topk();
 	
@@ -623,7 +327,7 @@ int o_begin_sample_from(
 			/* how to do random rejection to boost randomness 
 			 * to avoid choosing leaf again?  */
 			int temp = random_next(sub_dir_num);				
-			cur_parent = dup_str(curPtr->sdirStruct[temp].dir_name);
+			cur_parent = dup_str(curPtr->sdirStruct[temp].dir_abs_path);
 			curPtr = &curPtr ->sdirStruct[temp];
 			
 		}
@@ -642,9 +346,13 @@ int o_begin_sample_from(
 				g_stack_top--;			/* stack out */
 				          
 			} while (g_stack_top > 0);
-			printf("test2\n");
+			
 			/* finishing this drill down, set the direcotry back */
-			chdir(sample_root);
+			if (chdir(sample_root) != 0)
+			{
+				printf("chdir failed\n");
+				exit(-1);
+			}
 			bool_sdone = 1;
         }
     } 
@@ -669,9 +377,15 @@ void o_get_subdirs(
 	if (curPtr->bool_dir_explored == 1)
 	{
 		/* This change dir is really important */
-		already_covered++;
-		chdir(path);		
+		already_covered++;			
 		return;
+	}
+
+	/* chdir for getting sub_dir's absolute path */
+	if (chdir(path) != 0)
+	{
+		printf("chdir failed\n");
+		exit(-1);
 	}
 		
 	/* so we have to scan */
@@ -680,7 +394,6 @@ void o_get_subdirs(
 	/* root is given like the absolute path regardless of the cur_dir */
     sub_dir_num = scandir(path, &namelist, check_type, 0);
 	
-	chdir(path);
 	
  	alloc = sub_dir_num - 2;
 	used = 0;
@@ -708,15 +421,25 @@ void o_get_subdirs(
 		if ((strcmp(namelist[temp]->d_name, ".") == 0) ||
                         (strcmp(namelist[temp]->d_name, "..") == 0))
                continue;
-   		if (!(curPtr->sdirStruct[used++].dir_name 
-		       = dup_str(namelist[temp]->d_name))) 
+		
+		if (chdir(namelist[temp]->d_name) != 0)
+		{
+			printf("chdir failed\n");
+			exit(-1);
+		}
+   		if (!(curPtr->sdirStruct[used++].dir_abs_path 
+		       = dup_str(get_current_dir_name()))) 
 		{
 			printf("get name error!!!!\n");
-    	}		
+    	}	
+		if (chdir(path) != 0)
+		{
+			printf("chdir failed\n");
+		}
 	}
 
 	sub_dir_num -= 2;
-	printf("path: %s\n", path);
+
 	/* encounter a new folder, update the [min, max] range */
 	if (stat(get_current_dir_name(), &stat_buf) != 0)
 	{
@@ -759,11 +482,8 @@ void set_range(int top)
 /* traverse to collect topk */
 void collect_topk(struct dir_node *rootPtr)
 {
-    int level = 0;  /* root is in level 1 */
-    int clength;
-    int vlength;
-
-    struct dir_node *cur_dir = NULL;
+    int level = 0;  
+	struct dir_node *cur_dir = NULL;
 	            
     /* root_dir goes to queue */
     enQueue(&level_q, rootPtr);
@@ -774,6 +494,7 @@ void collect_topk(struct dir_node *rootPtr)
     {
         level++;
         initQueue(&tempvec);
+		
         /* for all dirs currently in the queue 
          * these dirs should be in the same level 
          */
@@ -782,29 +503,9 @@ void collect_topk(struct dir_node *rootPtr)
             cur_dir = outQueue(&level_q);
 			
 			/* find the eligible dirs and files for record (into queue)
-			 * and output (to display
-			 */           
-			record_dir_output_file(cur_dir);
-            
-            
-            if (cur_dir->sub_dir_num > 0)
-            {
-                
-                vlength = cur_dir->sub_dir_num;
+			 * and output (to display */
 
-				/* (g_qcost_thresh * g_level_thresh) should always be 0 */
-				if ((qcost > g_qcost_thresh) && level > g_level_thresh)
-                    clength = min (vlength, 
-						max(g_sdir_thresh, floor(vlength/g_percentage)));
-                else 
-                    clength = vlength;
-                
-                int i;
-                for (i = 0; i < clength; i++)
-                {  
-                    enQueue(&tempvec, &cur_dir->sdirStruct[ar[i]]);
-                }
-            }
+			record_dir_output_file(cur_dir);
         }
 		struct dir_node *temp;
         for (; emptyQueue(&tempvec) != 1; )
@@ -898,7 +599,7 @@ void record_dir_output_file(struct dir_node *curPtr)
 	 * and output those are eligible (within the topk range
 	 */
 	sub_file_num = scandir(curPtr->dir_abs_path, &file_namelist,
-	                       n_get_eligible_file, 0);
+	                       get_eligible_file, 0);
 	for (i = 0; i < sub_file_num; i++)
 	{
 		printf("%s/%s\n", curPtr->dir_abs_path, file_namelist[i]->d_name);		
