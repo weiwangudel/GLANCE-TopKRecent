@@ -22,31 +22,19 @@
 #define MAX_DRILL_DOWN 1000
 #define MAX_INT 100000000
 
-/* New struct for saving history */
 struct dir_node
 {
 	long int sub_file_num;
 	long int sub_dir_num;
 
-	long int cond_dir_num;
-	long int cond_file_num;  /* Number of files that satisfies the conditions */
-    double factor;	
-	int bool_dir_covered;
-	char *dir_abs_path;	 /* absolute path, needed for BFS */			
-	struct dir_node *sdirStruct; /* child array dynamically allocated */
-};
-
-struct o_dir_node
-{
-	long int sub_file_num;
-	long int sub_dir_num;
-
-	double min_age;
-	double max_age;
+	double min_age;		/* mtime range */
+	double max_age;		
 	
-	int bool_dir_covered;
-	char *dir_name; 		
-	struct o_dir_node *sdirStruct; /* child array dynamically allocated */
+	int bool_dir_explored;
+	char *dir_name;
+	double factor;
+	char *dir_abs_path;	 /* absolute path, needed for BFS */
+	struct dir_node *sdirStruct; /* child array dynamically allocated */
 };
 
 /* for time statistics */
@@ -80,13 +68,16 @@ int root_flag = 0; /* only set root factor to 1 in fast_subdir */
 int ar[MAX_PERMU];		/* used for permutation */
 
 struct queueLK level_q;
+struct queueLK tempvec;
 
 /********************************************************/
 /******* Drill down depth suppose within 200 (level < 200)   *****/
-struct o_dir_node *g_depth_stack[200];
+struct dir_node *g_depth_stack[200];
 int g_stack_top = 0;
 double saved_min_age;
 double saved_max_age;
+double topk_min_age;
+double topk_max_age;
 /*****************************************************************/
 
 
@@ -103,9 +94,10 @@ long int new_count_for_topk(int argc, char* argv[]);
 char *get_current_dir_name(void);
 double floor(double);
 int get_eligible_file(const struct dirent *entry);
-
-void o_get_subdirs(const char *path, struct o_dir_node *curPtr);	
-int o_begin_sample_from(const char *sample_root, struct o_dir_node *curPtr);
+int eligible_subdirs(struct dir_node sub_dir_ptr);
+void record_dir_output_file(struct dir_node *curPtr);
+void o_get_subdirs(const char *path, struct dir_node *curPtr);	
+int o_begin_sample_from(const char *sample_root, struct dir_node *curPtr);
 void set_range(int top);
 int n_get_eligible_file(const struct dirent *entry);
 void collect_topk();
@@ -201,7 +193,7 @@ long int new_count_for_topk(int argc, char* argv[])
 
 	/* Initialize the dir_node struct */
 	rootPtr = &root_dir;
-	rootPtr->bool_dir_covered = 0;
+	rootPtr->bool_dir_explored = 0;
 	rootPtr->sdirStruct = NULL;
     rootPtr->dir_abs_path = dup_str(root_abs_name);
 
@@ -222,7 +214,7 @@ long int new_count_for_topk(int argc, char* argv[])
 		qcost_array[i] = qcost;
 		est_total = 0;
 	    qcost = 0;		
-		rootPtr->bool_dir_covered = 0;
+		rootPtr->bool_dir_explored = 0;
 		rootPtr->sdirStruct = NULL;
     	rootPtr->dir_abs_path = dup_str(root_abs_name);
 		root_flag = 0;
@@ -356,7 +348,7 @@ void n_fast_subdirs(struct dir_node *curDirPtr)
 	}
 	/* already stored the subdirs struct before
 	 * no need to scan the dir again */
-	if (curDirPtr->bool_dir_covered == 1)
+	if (curDirPtr->bool_dir_explored == 1)
 	{
 		/* This change dir is really important */
 		already_covered++;
@@ -392,7 +384,7 @@ void n_fast_subdirs(struct dir_node *curDirPtr)
 	{
 		curDirPtr->sdirStruct[temp].sub_dir_num = 0;
 		curDirPtr->sdirStruct[temp].sub_file_num = 0;
-		curDirPtr->sdirStruct[temp].bool_dir_covered = 0;
+		curDirPtr->sdirStruct[temp].bool_dir_explored = 0;
 	}
 
 
@@ -419,8 +411,8 @@ void n_fast_subdirs(struct dir_node *curDirPtr)
 
 	curDirPtr->sub_file_num = sub_file_num;
 	curDirPtr->sub_dir_num = sub_dir_num;
-	/* update bool_dir_covered info */
-	curDirPtr->bool_dir_covered = 1;
+	/* update bool_dir_explored info */
+	curDirPtr->bool_dir_explored = 1;
 }
 
 
@@ -533,8 +525,8 @@ int old_count_for_topk(int argc, char **argv)
 {
 	unsigned int sample_times;
 	size_t i;
-	struct o_dir_node *curPtr;
-	struct o_dir_node root;
+	struct dir_node *curPtr;
+	struct dir_node root;
 	char *root_abs_name;
 	
 	signal(SIGKILL, CleanExit);
@@ -550,6 +542,7 @@ int old_count_for_topk(int argc, char **argv)
 	if (argc < 3)
 	{
 		printf("Usage: %s drill-down-times pathname\n",argv[0]);
+		printf("topk_min_age\t topk_max_age\n");
 		return EXIT_FAILURE; 
 	}
 	if (chdir(argv[2]) != 0)
@@ -564,9 +557,15 @@ int old_count_for_topk(int argc, char **argv)
 	sample_times = atoi(argv[1]);
 	assert(sample_times <= MAX_INT);
 
+	assert(argv[2] != NULL);
+	assert(argv[3] != NULL);
+	
+	topk_min_age = atof(argv[2]);
+	topk_max_age = atof(argv[3]);
+	
 	/* Initialize the dir_node struct */
 	curPtr = &root;
-	curPtr->bool_dir_covered = 0;
+	curPtr->bool_dir_explored = 0;
 	curPtr->sdirStruct = NULL;
 	
 	srand((int)time(0));//different seed number for random function
@@ -599,7 +598,7 @@ int random_next(int random_bound)
  */
 int o_begin_sample_from(
 		const char *sample_root, 
-		struct o_dir_node *curPtr) 
+		struct dir_node *curPtr) 
 {
 	int sub_dir_num;
 		
@@ -655,7 +654,7 @@ int o_begin_sample_from(
 
 void o_get_subdirs(   
     const char *path,               /* path name of the parent dir */
-    struct o_dir_node *curPtr)
+    struct dir_node *curPtr)
 {
     struct dirent **namelist;
     
@@ -667,7 +666,7 @@ void o_get_subdirs(
 
 	/* already stored the subdirs struct before
 	 * no need to scan the dir again */
-	if (curPtr->bool_dir_covered == 1)
+	if (curPtr->bool_dir_explored == 1)
 	{
 		/* This change dir is really important */
 		already_covered++;
@@ -700,7 +699,7 @@ void o_get_subdirs(
 	{
 		curPtr->sdirStruct[temp].sub_dir_num = 0;
 		curPtr->sdirStruct[temp].sub_file_num = 0;
-		curPtr->sdirStruct[temp].bool_dir_covered = 0;
+		curPtr->sdirStruct[temp].bool_dir_explored = 0;
 	}
 	
 	/* scan the namelist */
@@ -735,8 +734,8 @@ void o_get_subdirs(
 
 	curPtr->sub_dir_num = sub_dir_num;
 	
-	/* update bool_dir_covered info */
-	curPtr->bool_dir_covered = 1;
+	/* update bool_dir_explored info */
+	curPtr->bool_dir_explored = 1;
 
 }
 
@@ -757,8 +756,164 @@ void set_range(int top)
 	
 }
 
-void collect_topk()
+/* traverse to collect topk */
+void collect_topk(struct dir_node *rootPtr)
 {
+    int level = 0;  /* root is in level 1 */
+    int clength;
+    int vlength;
+
+    struct dir_node *cur_dir = NULL;
+	            
+    /* root_dir goes to queue */
+    enQueue(&level_q, rootPtr);
+    
+
+    /* if queue is not empty */
+    while (emptyQueue(&level_q) != 1)    
+    {
+        level++;
+        initQueue(&tempvec);
+        /* for all dirs currently in the queue 
+         * these dirs should be in the same level 
+         */
+        for (; emptyQueue(&level_q) != 1; )
+        {
+            cur_dir = outQueue(&level_q);
+			
+			/* find the eligible dirs and files for record (into queue)
+			 * and output (to display
+			 */           
+			record_dir_output_file(cur_dir);
+            
+            
+            if (cur_dir->sub_dir_num > 0)
+            {
+                
+                vlength = cur_dir->sub_dir_num;
+
+				/* (g_qcost_thresh * g_level_thresh) should always be 0 */
+				if ((qcost > g_qcost_thresh) && level > g_level_thresh)
+                    clength = min (vlength, 
+						max(g_sdir_thresh, floor(vlength/g_percentage)));
+                else 
+                    clength = vlength;
+                
+                int i;
+                for (i = 0; i < clength; i++)
+                {  
+                    enQueue(&tempvec, &cur_dir->sdirStruct[ar[i]]);
+                }
+            }
+        }
+		struct dir_node *temp;
+        for (; emptyQueue(&tempvec) != 1; )
+        {
+            temp = outQueue(&tempvec);
+            enQueue(&level_q, temp);            
+        }  
+    }
 }
 
+
+void record_dir_output_file(struct dir_node *curPtr)
+{
+	int i;
+    struct dirent **dir_namelist;
+	struct dirent **file_namelist;
+	long int sub_dir_num;
+	long int sub_file_num;
+	long int used;
+	long int alloc;
+	
+	/* if the directory has been explored, meaning the subdir struct are
+	 * there for use */	
+	if (curPtr->bool_dir_explored == 1)
+	{
+		/* choose the appropriate subdir for topk collection */
+		for (i = 0; i < curPtr->sub_dir_num; i++)
+		{
+			if (eligible_subdirs(curPtr->sdirStruct[i]) == 1)
+				enQueue(&tempvec, &curPtr->sdirStruct[i]);
+		}		
+					
+	}
+
+	/* this directory has never been drilled down, we need to explore 
+	 * its sub_dirs (malloc for future traverse) and put it to the queue  
+	 */
+	else
+	{
+		sub_dir_num = scandir(curPtr->dir_abs_path, 
+		                      &dir_namelist, check_type, 0);
+		
+ 		alloc = sub_dir_num - 2;
+		used = 0;
+
+  		if (alloc > 0 && !(curPtr->sdirStruct
+			= malloc(alloc * sizeof (struct dir_node)) )) 
+		{
+		    //goto error_close;
+			printf("malloc error!\n");
+			exit(-1);
+		}
+		
+		int temp = 0;
+
+		for (temp = 0; temp < alloc; temp++)
+		{
+			curPtr->sdirStruct[temp].sub_dir_num = 0;
+			curPtr->sdirStruct[temp].sub_file_num = 0;
+			curPtr->sdirStruct[temp].bool_dir_explored = 0;
+		}
+	
+		/* scan the namelist */
+		for (temp = 0; temp < sub_dir_num; temp++)
+		{
+			if ((strcmp(dir_namelist[temp]->d_name, ".") == 0) ||
+		                    (strcmp(dir_namelist[temp]->d_name, "..") == 0))
+		           continue;
+	   		if (!(curPtr->sdirStruct[used].dir_name 
+				   = dup_str(dir_namelist[temp]->d_name))) 
+			{
+				printf("get name error!!!!\n");
+			}	
+
+			/* also queue in */
+			enQueue(&tempvec, &curPtr->sdirStruct[used]);
+			used++;
+		}
+
+		sub_dir_num -= 2;
+		
+
+		curPtr->sub_dir_num = sub_dir_num;
+	
+		/* update bool_dir_explored info */
+		curPtr->bool_dir_explored = 1;		
+		
+	}
+	
+	/* check all the file's modification time under the curPtr->dirname
+	 * and output those are eligible (within the topk range
+	 */
+	sub_file_num = scandir(curPtr->dir_abs_path, &file_namelist,
+	                       n_get_eligible_file, 0);
+	for (i = 0; i < sub_file_num; i++)
+	{
+		printf("%s/%s\n", curPtr->dir_abs_path, file_namelist[i]->d_name);		
+	}
+	
+}
+
+int eligible_subdirs(struct dir_node sub_dir)
+{
+	if ((sub_dir.max_age < topk_min_age) ||
+		(topk_max_age < sub_dir.min_age))
+	{
+		return 0;		
+	}
+	
+	return 1;
+}
 
