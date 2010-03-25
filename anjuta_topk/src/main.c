@@ -92,7 +92,7 @@ void o_get_subdirs(const char *path, struct dir_node *curPtr);
 int o_begin_sample_from(const char *sample_root, struct dir_node *curPtr);
 void set_range(int top);
 int get_eligible_file(const struct dirent *entry);
-void collect_topk();
+void collect_topk(struct dir_node *rootPtr);
 int old_count_for_topk(int argc, char **argv);
 
 int min(int a, int b);
@@ -283,7 +283,7 @@ int old_count_for_topk(int argc, char **argv)
 	}
 	printf("begin_sample_from end\n");
 	/* get whatever the result of given range is */
-	collect_topk();
+	collect_topk(&root);
 	
 	/* Exit and Display Statistic */
 	CleanExit (2);
