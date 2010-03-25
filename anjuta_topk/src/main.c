@@ -29,10 +29,9 @@ struct dir_node
 
 	double min_age;		/* mtime range */
 	double max_age;		
-	
+
 	int bool_dir_explored;
 	char *dir_name;
-	double factor;
 	char *dir_abs_path;	 /* absolute path, needed for BFS */
 	struct dir_node *sdirStruct; /* child array dynamically allocated */
 };
@@ -85,10 +84,9 @@ long int new_count_for_topk(int argc, char* argv[]);
 /* why do I have to redefine to avoid the warning of get_current_dir_name? */
 char *get_current_dir_name(void);
 double floor(double);
-int get_eligible_file(const struct dirent *entry);
 int eligible_subdirs(struct dir_node sub_dir_ptr);
 void record_dir_output_file(struct dir_node *curPtr);
-void o_get_subdirs(const char *path, struct dir_node *curPtr);	
+void get_subdirs(const char *path, struct dir_node *curPtr);	
 int o_begin_sample_from(const char *sample_root, struct dir_node *curPtr);
 void set_range(int top);
 int get_eligible_file(const struct dirent *entry);
@@ -104,6 +102,7 @@ void permutation(int size);
 
 int main(int argc, char* argv[]) 
 {
+	time(&g_prog_start_time);
 	old_count_for_topk(argc, argv);
 	return EXIT_SUCCESS;
 }
@@ -139,19 +138,15 @@ int get_eligible_file(const struct dirent *entry)
 		exit(-1);		
 	}
 
-	diff = difftime(g_prog_start_time, stat_buf.st_atime);
-
+	diff = difftime(g_prog_start_time, stat_buf.st_mtime);
+	printf("diff in eligible file:%f", diff);
 	/* find most recent files */
-	if (diff < g_select_cond)
+	if (diff < topk_max_age && diff > topk_min_age)
 		return 1;	
 	else
 		return 0;	
 }
 
-int n_analyze_aggregate_results()
-{
-	return EXIT_SUCCESS;
-}
 
 /************************SIMPLE MATH WORK**********************************/
 int min(int a, int b)
@@ -237,7 +232,6 @@ int old_count_for_topk(int argc, char **argv)
 	signal(SIGINT, CleanExit);
 	signal(SIGQUIT, CleanExit);
 	signal(SIGHUP, CleanExit);
-
   
 	/* start timer */
 	gettimeofday(&start, NULL ); 
@@ -260,11 +254,14 @@ int old_count_for_topk(int argc, char **argv)
 	sample_times = atoi(argv[1]);
 	assert(sample_times <= MAX_INT);
 
-	assert(argv[2] != NULL);
 	assert(argv[3] != NULL);
+	assert(argv[4] != NULL);
 	
-	topk_min_age = atof(argv[2]);
-	topk_max_age = atof(argv[3]);
+	topk_min_age = atof(argv[3]) * 24 * 3600;
+	topk_max_age = atof(argv[4]) * 24 * 3600; /* to seconds */
+	
+	printf("topK_min:%f", topk_min_age);
+	printf("topk_max:%f", topk_max_age);
 	
 	/* Initialize the dir_node struct */
 	curPtr = &root;
@@ -312,17 +309,17 @@ int o_begin_sample_from(
 		
     while (bool_sdone != 1)
     {
-		o_get_subdirs(cur_parent, curPtr);
+		/* stack in */
+		g_depth_stack[g_stack_top] = curPtr;
+		g_stack_top++;
+		
+		get_subdirs(cur_parent, curPtr);
 		sub_dir_num = curPtr->sub_dir_num;
 		
 		/* drill down according to reported sub_dir_num */
 		if (sub_dir_num > 0)
 		{
 			/*......deleted divide and conquer.......*/
-
-			/* stack in */
-			g_depth_stack[g_stack_top] = curPtr;
-			g_stack_top++;
 
 			/* how to do random rejection to boost randomness 
 			 * to avoid choosing leaf again?  */
@@ -338,7 +335,9 @@ int o_begin_sample_from(
 			assert(g_stack_top - 1 >= 0);
 			saved_min_age = g_depth_stack[g_stack_top - 1]->min_age;
 			saved_max_age = g_depth_stack[g_stack_top - 1]->max_age;
-			
+
+			printf("saved_min_age:%f, saved_max_age:%f\n", 
+			        saved_min_age, saved_max_age);
 			/* backtracking */
 			do 
 			{
@@ -360,7 +359,7 @@ int o_begin_sample_from(
 }
 
 
-void o_get_subdirs(   
+void get_subdirs(   
     const char *path,               /* path name of the parent dir */
     struct dir_node *curPtr)
 {
@@ -413,6 +412,8 @@ void o_get_subdirs(
 		curPtr->sdirStruct[temp].sub_dir_num = 0;
 		curPtr->sdirStruct[temp].sub_file_num = 0;
 		curPtr->sdirStruct[temp].bool_dir_explored = 0;
+		curPtr->sdirStruct[temp].min_age = 0;
+		curPtr->sdirStruct[temp].max_age = 0;
 	}
 	
 	/* scan the namelist */
@@ -448,7 +449,7 @@ void o_get_subdirs(
 	}
 
 	diff = difftime(g_prog_start_time, stat_buf.st_mtime);
-
+	printf("diff of directory %s, %f\n", get_current_dir_name(), diff);
 	/* arbitrarily set(guess, gamble) min age to be half and make a
 	 * arithmetic progression */
 	curPtr->min_age = diff / 2;
@@ -598,8 +599,10 @@ void record_dir_output_file(struct dir_node *curPtr)
 	/* check all the file's modification time under the curPtr->dirname
 	 * and output those are eligible (within the topk range
 	 */
+	printf("dir_abs_path:%s\n", curPtr->dir_abs_path);
 	sub_file_num = scandir(curPtr->dir_abs_path, &file_namelist,
 	                       get_eligible_file, 0);
+	printf("eligible file numbers: %ld\n", sub_file_num);
 	for (i = 0; i < sub_file_num; i++)
 	{
 		printf("%s/%s\n", curPtr->dir_abs_path, file_namelist[i]->d_name);		
@@ -609,6 +612,8 @@ void record_dir_output_file(struct dir_node *curPtr)
 
 int eligible_subdirs(struct dir_node sub_dir)
 {
+    printf("sub_dir.max_age: %f\n", sub_dir.max_age);
+    printf("sub_dir.min_age: %f\n", sub_dir.min_age);
 	if ((sub_dir.max_age < topk_min_age) ||
 		(topk_max_age < sub_dir.min_age))
 	{
