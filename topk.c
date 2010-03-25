@@ -20,6 +20,7 @@
 
 #define MAX_PERMU 1000000
 #define MAX_DRILL_DOWN 1000
+#define MAX_INT 100000000
 
 /* New struct for saving history */
 struct dir_node
@@ -40,8 +41,8 @@ struct o_dir_node
 	long int sub_file_num;
 	long int sub_dir_num;
 
-	long int time_min;
-	long int time_max;
+	double min_age;
+	double max_age;
 	
 	int bool_dir_covered;
 	char *dir_name; 		
@@ -85,8 +86,10 @@ struct queueLK level_q;
 
 /********************************************************/
 /******* Drill down depth suppose within 200 (level < 200)   *****/
-struct dir_node * g_depth_stack[200];
+struct o_dir_node *g_depth_stack[200];
 int g_stack_top = 0;
+double saved_min_age;
+double saved_max_age;
 /*****************************************************************/
 
 
@@ -94,9 +97,9 @@ int g_stack_top = 0;
 /***********************functions ********************************/
 void CleanExit(int sig);
 static char *dup_str(const char *s);
-int begin_estimate_from(struct dir_node *rootPtr);
+int n_begin_estimate_from(struct dir_node *rootPtr);
 int check_type(const struct dirent *entry);
-void fast_subdirs(struct dir_node *curDirPtr);
+void n_fast_subdirs(struct dir_node *curDirPtr);
 long int new_count_for_topk(int argc, char* argv[]);
 
 /* why do I have to redefine to avoid the warning of get_current_dir_name? */
@@ -104,6 +107,12 @@ char *get_current_dir_name(void);
 double floor(double);
 int get_eligible_file(const struct dirent *entry);
 
+void o_get_subdirs(const char *path, struct o_dir_node *curPtr, 
+                   int *sub_dir_num, int *sub_file_num);	
+int o_begin_sample_from(const char *sample_root, struct o_dir_node *curPtr);
+void set_range(int top);
+int n_get_eligible_file(const struct dirent *entry);
+void collect_topk();
 
 int main(int argc, char* argv[]) 
 {
@@ -199,13 +208,13 @@ long int new_count_for_topk(int argc, char* argv[])
 	double * est_array = malloc(sample_times * sizeof (double));
 	long int * qcost_array = malloc (sample_times * sizeof (long int ));
 
-	g_select_cond = 1/24 * * 24 * 60 * 60;  /* one day */
+	g_select_cond = 1/24 * 1* 24 * 60 * 60;  /* one day */
 	
 	/* start estimation */
 	for (i=0; i < sample_times; i++)
 	{		
 		gettimeofday(&sample_start, NULL);
-	 	begin_estimate_from(rootPtr);
+	 	n_begin_estimate_from(rootPtr);
 		est_array[i] = est_total;
 		qcost_array[i] = qcost;
 		est_total = 0;
@@ -277,7 +286,7 @@ int n_begin_estimate_from(struct dir_node *rootPtr)
             /* level ordering, change directory is a big problem 
              * currently save the absolute direcotory of each folder 
              */
-            fast_subdirs(cur_dir);
+            n_fast_subdirs(cur_dir);
             qcost++;
             est_total = est_total + cur_dir->sub_file_num * cur_dir->factor;
             
@@ -361,7 +370,7 @@ void n_fast_subdirs(struct dir_node *curDirPtr)
 
 	/* root is given like the absolute path regardless of the cur_dir */
     sub_dir_num = scandir(path, &dir_namelist, check_type, 0);
-	sub_file_num = scandir(path, &file_namelist, get_eligible_file, 0);
+	sub_file_num = scandir(path, &file_namelist, n_get_eligible_file, 0);
 
  	alloc = sub_dir_num - 2;
 	used = 0;
@@ -523,8 +532,8 @@ int old_count_for_topk(int argc, char **argv)
 {
 	unsigned int sample_times;
 	size_t i;
-	struct dir_node *curPtr;
-	struct dir_node root;
+	struct o_dir_node *curPtr;
+	struct o_dir_node root;
 	char *root_abs_name;
 	
 	signal(SIGKILL, CleanExit);
@@ -553,12 +562,6 @@ int old_count_for_topk(int argc, char **argv)
 
 	sample_times = atoi(argv[1]);
 	assert(sample_times <= MAX_INT);
-
-	/* initialize the value */
-	{
-        est_total = 0;
-        est_num = 0;
-	}
 
 	/* Initialize the dir_node struct */
 	curPtr = &root;
@@ -594,7 +597,7 @@ int random_next(int random_bound)
  */
 int o_begin_sample_from(
 		const char *sample_root, 
-		struct dir_node *curPtr) 
+		struct o_dir_node *curPtr) 
 {
 	int sub_dir_num = 0;
 	int sub_file_num = 0;
@@ -617,10 +620,11 @@ int o_begin_sample_from(
 			/*......deleted divide and conquer.......*/
 
 			/* stack in */
-			g_stack_array[g_stack_top] = curPtr;
+			g_depth_stack[g_stack_top] = curPtr;
 			g_stack_top++;
 
-			/* with random rejection to boost randomness */
+			/* how to do random rejection to boost randomness 
+			 * to avoid choosing leaf again?  */
 			int temp = random_next(sub_dir_num);				
 			cur_parent = dup_str(curPtr->sdirStruct[temp].dir_name);
 			curPtr = &curPtr ->sdirStruct[temp];
@@ -630,11 +634,14 @@ int o_begin_sample_from(
 		/* leaf directory, end the drill down */
         else
         {
+			saved_min_age = g_depth_stack[g_stack_top - 1]->min_age;
+			saved_max_age = g_depth_stack[g_stack_top - 1]->max_age;
+			
 			/* backtracking */
 			do 
 			{
-				set_range(g_stack_array[g_stack_top - 1]);
-				g_stack_top--;
+				set_range(g_stack_top - 1);
+				g_stack_top--;			/* stack out */
 				          
 			} while (g_stack_top > 0);
 			
@@ -649,7 +656,7 @@ int o_begin_sample_from(
 
 void o_get_subdirs(   
     const char *path,               /* path name of the parent dir */
-    struct dir_node *curPtr,  /* */
+    struct o_dir_node *curPtr,  /* */
 	int *sub_dir_num,		        /* number of sub dirs */
 	int *sub_file_num)		        /* number of sub files */
 {
@@ -658,6 +665,9 @@ void o_get_subdirs(
     size_t alloc;
     int total_num;
 	int used = 0;
+	struct stat stat_buf;
+	double diff;
+	
 
 	/* already stored the subdirs struct before
 	 * no need to scan the dir again */
@@ -692,9 +702,9 @@ void o_get_subdirs(
 
 	for (temp = 0; temp < alloc; temp++)
 	{
-		curDirPtr->sdirStruct[temp].sub_dir_num = 0;
-		curDirPtr->sdirStruct[temp].sub_file_num = 0;
-		curDirPtr->sdirStruct[temp].bool_dir_covered = 0;
+		curPtr->sdirStruct[temp].sub_dir_num = 0;
+		curPtr->sdirStruct[temp].sub_file_num = 0;
+		curPtr->sdirStruct[temp].bool_dir_covered = 0;
 	}
 	
 	/* scan the namelist */
@@ -712,6 +722,21 @@ void o_get_subdirs(
 
 	*sub_dir_num -= 2;
 
+	/* encounter a new folder, update the [min, max] range */
+	if (stat(curPtr->dir_name, &stat_buf) != 0)
+	{
+		printf("stat error!\n");
+		exit(-1);		
+	}
+
+	diff = difftime(g_prog_start_time, stat_buf.st_mtime);
+
+	/* arbitrarily set(guess, gamble) min age to be half and make a
+	 * arithmetic progression */
+	curPtr->min_age = diff / 2;
+	curPtr->max_age = diff * 1.5;
+
+
 	curPtr->sub_dir_num = *sub_dir_num;
 	
 	/* update bool_dir_covered info */
@@ -719,10 +744,26 @@ void o_get_subdirs(
 
 }
 
-void set_range(struct o_dir_node *)
+void set_range(int top)
 {
-	
+	saved_min_age = g_depth_stack[g_stack_top - 1]->min_age;
+	saved_max_age = g_depth_stack[g_stack_top - 1]->max_age;
+
+	if (g_depth_stack[top]->min_age > saved_min_age)
+		g_depth_stack[top]->min_age = saved_min_age;
+
+	if (g_depth_stack[top]->max_age < saved_max_age)
+		g_depth_stack[top]->max_age = saved_max_age;
+
+	/* save the [min, max] for parent use */
+	saved_min_age = g_depth_stack[top]->min_age;
+	saved_max_age = g_depth_stack[top]->max_age;
 	
 }
+
+void collect_topk()
+{
+}
+
 
 
