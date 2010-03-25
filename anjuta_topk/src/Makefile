@@ -52,7 +52,7 @@ topk_OBJECTS = $(am_topk_OBJECTS)
 topk_DEPENDENCIES =
 topk_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(topk_LDFLAGS) \
-	$(LDFLAGS) -o $@ -lm
+	$(LDFLAGS) -o $@
 DEFAULT_INCLUDES = -I. -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
@@ -71,13 +71,13 @@ DIST_SOURCES = $(topk_SOURCES)
 ETAGS = etags
 CTAGS = ctags
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
-ACLOCAL = ${SHELL} /home/weiwang/Desktop/topk/anjuta_topk/missing --run aclocal-1.11
+ACLOCAL = ${SHELL} /home/weiwang/Desktop/topk/anjuta_topk/missing --run aclocal-1.10
 ALL_LINGUAS = 
 AMTAR = ${SHELL} /home/weiwang/Desktop/topk/anjuta_topk/missing --run tar
 AR = ar
 AUTOCONF = ${SHELL} /home/weiwang/Desktop/topk/anjuta_topk/missing --run autoconf
 AUTOHEADER = ${SHELL} /home/weiwang/Desktop/topk/anjuta_topk/missing --run autoheader
-AUTOMAKE = ${SHELL} /home/weiwang/Desktop/topk/anjuta_topk/missing --run automake-1.11
+AUTOMAKE = ${SHELL} /home/weiwang/Desktop/topk/anjuta_topk/missing --run automake-1.10
 AWK = gawk
 CATALOGS = 
 CATOBJEXT = .gmo
@@ -121,7 +121,7 @@ LIBTOOL = $(SHELL) $(top_builddir)/libtool
 LIPO = 
 LN_S = ln -s
 LTLIBOBJS = 
-MAINT = 
+MAINT = #
 MAKEINFO = ${SHELL} /home/weiwang/Desktop/topk/anjuta_topk/missing --run makeinfo
 MKDIR_P = /bin/mkdir -p
 MKINSTALLDIRS = ./mkinstalldirs
@@ -148,7 +148,7 @@ PO_IN_DATADIR_TRUE =
 RANLIB = ranlib
 SED = /bin/sed
 SET_MAKE = 
-SHELL = /bin/sh
+SHELL = /bin/bash
 STRIP = strip
 USE_NLS = yes
 VERSION = 0.1
@@ -184,7 +184,7 @@ host_vendor = pc
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /home/weiwang/Desktop/topk/anjuta_topk/install-sh
+install_sh = $(SHELL) /home/weiwang/Desktop/topk/anjuta_topk/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
@@ -223,7 +223,7 @@ all: all-am
 
 .SUFFIXES:
 .SUFFIXES: .c .lo .o .obj
-$(srcdir)/Makefile.in:  $(srcdir)/Makefile.am  $(am__configure_deps)
+$(srcdir)/Makefile.in: # $(srcdir)/Makefile.am  $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
 	    *$$dep*) \
@@ -248,9 +248,9 @@ Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 $(top_builddir)/config.status: $(top_srcdir)/configure $(CONFIG_STATUS_DEPENDENCIES)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 
-$(top_srcdir)/configure:  $(am__configure_deps)
+$(top_srcdir)/configure: # $(am__configure_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
-$(ACLOCAL_M4):  $(am__aclocal_m4_deps)
+$(ACLOCAL_M4): # $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
 install-binPROGRAMS: $(bin_PROGRAMS)

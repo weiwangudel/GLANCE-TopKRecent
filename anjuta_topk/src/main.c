@@ -132,6 +132,7 @@ int get_eligible_file(const struct dirent *entry)
 	struct stat stat_buf;
 	double diff;
 	
+	/* make sure to be in the correct directory */
 	if (stat(entry->d_name, &stat_buf) != 0)
 	{
 		printf("stat error!\n");
@@ -139,7 +140,7 @@ int get_eligible_file(const struct dirent *entry)
 	}
 
 	diff = difftime(g_prog_start_time, stat_buf.st_mtime);
-	printf("diff in eligible file:%f", diff);
+	//printf("diff in eligible file:%f", diff);
 	/* find most recent files */
 	if (diff < topk_max_age && diff > topk_min_age)
 		return 1;	
@@ -259,10 +260,7 @@ int old_count_for_topk(int argc, char **argv)
 	
 	topk_min_age = atof(argv[3]) * 24 * 3600;
 	topk_max_age = atof(argv[4]) * 24 * 3600; /* to seconds */
-	
-	printf("topK_min:%f", topk_min_age);
-	printf("topk_max:%f", topk_max_age);
-	
+		
 	/* Initialize the dir_node struct */
 	curPtr = &root;
 	curPtr->bool_dir_explored = 0;
@@ -278,7 +276,7 @@ int old_count_for_topk(int argc, char **argv)
 		o_begin_sample_from(root_abs_name, curPtr);
 		curPtr = &root;
 	}
-	printf("begin_sample_from end\n");
+	
 	/* get whatever the result of given range is */
 	collect_topk(&root);
 	
@@ -336,8 +334,8 @@ int o_begin_sample_from(
 			saved_min_age = g_depth_stack[g_stack_top - 1]->min_age;
 			saved_max_age = g_depth_stack[g_stack_top - 1]->max_age;
 
-			printf("saved_min_age:%f, saved_max_age:%f\n", 
-			        saved_min_age, saved_max_age);
+			//printf("saved_min_age:%f, saved_max_age:%f\n", 
+			  //      saved_min_age, saved_max_age);
 			/* backtracking */
 			do 
 			{
@@ -449,7 +447,7 @@ void get_subdirs(
 	}
 
 	diff = difftime(g_prog_start_time, stat_buf.st_mtime);
-	printf("diff of directory %s, %f\n", get_current_dir_name(), diff);
+	//printf("diff of directory %s, %f\n", get_current_dir_name(), diff);
 	/* arbitrarily set(guess, gamble) min age to be half and make a
 	 * arithmetic progression */
 	curPtr->min_age = diff / 2;
@@ -505,8 +503,9 @@ void collect_topk(struct dir_node *rootPtr)
 			
 			/* find the eligible dirs and files for record (into queue)
 			 * and output (to display */
-
+			printf("test1\n");
 			record_dir_output_file(cur_dir);
+			printf("test2\n");
         }
 		struct dir_node *temp;
         for (; emptyQueue(&tempvec) != 1; )
@@ -546,6 +545,12 @@ void record_dir_output_file(struct dir_node *curPtr)
 	 */
 	else
 	{
+		/* for absolute name */
+		if (chdir(curPtr->dir_abs_path) != 0)
+		{
+			printf("chdir failed\n");
+		}
+		
 		sub_dir_num = scandir(curPtr->dir_abs_path, 
 		                      &dir_namelist, check_type, 0);
 		
@@ -581,6 +586,24 @@ void record_dir_output_file(struct dir_node *curPtr)
 				printf("get name error!!!!\n");
 			}	
 
+		
+			if (chdir(dir_namelist[temp]->d_name) != 0)
+			{
+				printf("chdir failed\n");
+				exit(-1);
+			}
+	   		if (!(curPtr->sdirStruct[used].dir_abs_path 
+				   = dup_str(get_current_dir_name()))) 
+			{
+				printf("get name error!!!!\n");
+			}	
+
+			/* restore dir name */
+			if (chdir(curPtr->dir_abs_path) != 0)
+			{
+				printf("chdir failed\n");
+			}
+
 			/* also queue in */
 			enQueue(&tempvec, &curPtr->sdirStruct[used]);
 			used++;
@@ -599,10 +622,14 @@ void record_dir_output_file(struct dir_node *curPtr)
 	/* check all the file's modification time under the curPtr->dirname
 	 * and output those are eligible (within the topk range
 	 */
-	printf("dir_abs_path:%s\n", curPtr->dir_abs_path);
+	if (chdir(curPtr->dir_abs_path) != 0)
+	{
+		printf("chdir failed\n");
+		exit(-1);
+	}
 	sub_file_num = scandir(curPtr->dir_abs_path, &file_namelist,
 	                       get_eligible_file, 0);
-	printf("eligible file numbers: %ld\n", sub_file_num);
+	//printf("eligible file numbers: %ld\n", sub_file_num);
 	for (i = 0; i < sub_file_num; i++)
 	{
 		printf("%s/%s\n", curPtr->dir_abs_path, file_namelist[i]->d_name);		
@@ -612,8 +639,8 @@ void record_dir_output_file(struct dir_node *curPtr)
 
 int eligible_subdirs(struct dir_node sub_dir)
 {
-    printf("sub_dir.max_age: %f\n", sub_dir.max_age);
-    printf("sub_dir.min_age: %f\n", sub_dir.min_age);
+    //printf("sub_dir.max_age: %f\n", sub_dir.max_age);
+    //printf("sub_dir.min_age: %f\n", sub_dir.min_age);
 	if ((sub_dir.max_age < topk_min_age) ||
 		(topk_max_age < sub_dir.min_age))
 	{
