@@ -131,6 +131,10 @@ int get_eligible_file(const struct dirent *entry)
 {
 	struct stat stat_buf;
 	double diff;
+
+	if ((strcmp(entry->d_name, ".") == 0) ||
+                        (strcmp(entry->d_name, "..") == 0))
+		return 0;
 	
 	/* make sure to be in the correct directory */
 	if (stat(entry->d_name, &stat_buf) != 0)
@@ -503,9 +507,7 @@ void collect_topk(struct dir_node *rootPtr)
 			
 			/* find the eligible dirs and files for record (into queue)
 			 * and output (to display */
-			printf("test1\n");
 			record_dir_output_file(cur_dir);
-			printf("test2\n");
         }
 		struct dir_node *temp;
         for (; emptyQueue(&tempvec) != 1; )
