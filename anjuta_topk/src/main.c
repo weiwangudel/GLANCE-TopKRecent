@@ -65,6 +65,9 @@ double saved_min_age;
 double saved_max_age;
 double topk_min_age;
 double topk_max_age;
+unsigned int    topk_dir_num = 1;
+unsigned int    the_K;
+unsigned int    cur_k;
 /*****************************************************************/
 
 
@@ -105,123 +108,6 @@ int main(int argc, char* argv[])
 	return EXIT_SUCCESS;
 }
 
-static char *dup_str(const char *s) 
-{
-    size_t n = strlen(s) + 1;
-    char *t = malloc(n);
-    if (t) 
-	{
-        memcpy(t, s, n);
-    }
-    return t;
-}
-
-int check_type(const struct dirent *entry)
-{
-    if (entry->d_type == DT_DIR)
-        return 1;
-    else
-        return 0;
-}
-
-/* Get MAC timestamp using stat struct */
-int get_eligible_file(const struct dirent *entry)
-{
-	struct stat stat_buf;
-	double diff;
-
-	if ((strcmp(entry->d_name, ".") == 0) ||
-                        (strcmp(entry->d_name, "..") == 0))
-		return 0;
-	
-	/* make sure to be in the correct directory */
-	if (stat(entry->d_name, &stat_buf) != 0)
-	{
-		printf("stat error!\n");
-		exit(-1);		
-	}
-
-	diff = difftime(g_prog_start_time, stat_buf.st_mtime);
-	//printf("diff in eligible file:%f", diff);
-	/* find most recent files */
-	if (diff < topk_max_age && diff > topk_min_age)
-		return 1;	
-	else
-		return 0;	
-}
-
-
-/************************SIMPLE MATH WORK**********************************/
-int min(int a, int b)
-{
-    if (a < b)
-        return a;
-    return b;
-}
-
-int max(int a, int b)
-{
-    if (a > b)
-        return a;
-    return b;
-}
-
-void permutation(int size)
-{
-  int i;
-  for (i=0; i < size; i++)
-    ar[i] = i;
-  for (i=0; i < size-1; i++)
-    swap(&ar[i], &ar[Random(i,size)]);
-}
-
-void swap(int *a, int *b)
-{
-    int t;
-    t=*a;
-    *a=*b;
-    *b=t;
-}
-
-
-int Random(int left, int right)
-{
-	return left + rand() % (right-left);
-}
-
-
-/******************EXIT HANDLING FUNCTION*****************************/
-void CleanExit(int sig)
-{
-    /* make sure everything that needs to go to the screen gets there */
-    fflush(stdout);
-    gettimeofday(&end, NULL ); 
-    
-
-    if (sig != SIGHUP)
-        printf("\nExiting...\n");
-    else
-        printf("\nRestarting...\n");
-
-
-    puts("\n\n=============================================================");
-//	printf("\ndirs newly opened %ld\ndirs already_covered %ld\n",
-//			newly_covered, already_covered);
-	printf("\n %ld dirs traversed\n", qcost);
-    puts("=============================================================");
-    printf("Total Time:%ld milliseconds\n", 
-	(end.tv_sec-start.tv_sec)*1000+(end.tv_usec-start.tv_usec)/1000);
-    printf("Total Time:%ld seconds\n", 
-	(end.tv_sec-start.tv_sec)*1+(end.tv_usec-start.tv_usec)/1000000);
-
-	
-	printf("%ld\n", 
-    (end.tv_sec-start.tv_sec)*1+(end.tv_usec-start.tv_usec)/1000000);
-
-
-	exit(0);
-}
-
 
 int old_count_for_topk(int argc, char **argv) 
 {
@@ -240,10 +126,10 @@ int old_count_for_topk(int argc, char **argv)
 	/* start timer */
 	gettimeofday(&start, NULL ); 
 
-	if (argc < 3)
+	if (argc < 6)
 	{
-		printf("Usage: %s drill-down-times pathname\n",argv[0]);
-		printf("topk_min_age\t topk_max_age\n");
+		printf("Usage: %s\ndrill-down-times pathname ",argv[0]);
+		printf("topk_min_age topk_max_age dir_number [value of K]\n");
 		return EXIT_FAILURE; 
 	}
 	if (chdir(argv[2]) != 0)
@@ -263,7 +149,8 @@ int old_count_for_topk(int argc, char **argv)
 	
 	topk_min_age = atof(argv[3]) * 24 * 3600;
 	topk_max_age = atof(argv[4]) * 24 * 3600; /* to seconds */
-		
+	topk_dir_num = atoi(argv[5]);
+	
 	/* Initialize the dir_node struct */
 	curPtr = &root;
 	curPtr->bool_dir_explored = 0;
@@ -650,5 +537,123 @@ int eligible_subdirs(struct dir_node sub_dir)
 	}
 	
 	return 1;
+}
+
+static char *dup_str(const char *s) 
+{
+    size_t n = strlen(s) + 1;
+    char *t = malloc(n);
+    if (t) 
+	{
+        memcpy(t, s, n);
+    }
+    return t;
+}
+
+int check_type(const struct dirent *entry)
+{
+    if (entry->d_type == DT_DIR)
+        return 1;
+    else
+        return 0;
+}
+
+/* Get MAC timestamp using stat struct */
+int get_eligible_file(const struct dirent *entry)
+{
+	struct stat stat_buf;
+	double diff;
+
+	if ((strcmp(entry->d_name, ".") == 0) ||
+                        (strcmp(entry->d_name, "..") == 0))
+		return 0;
+	
+	/* make sure to be in the correct directory */
+	if (stat(entry->d_name, &stat_buf) != 0)
+	{
+		printf("stat error!\n");
+		exit(-1);		
+	}
+
+	diff = difftime(g_prog_start_time, stat_buf.st_mtime);
+	//printf("diff in eligible file:%f", diff);
+	/* find most recent files */
+	if (diff < topk_max_age && diff > topk_min_age)
+		return 1;	
+	else
+		return 0;	
+}
+
+
+/************************SIMPLE MATH WORK**********************************/
+int min(int a, int b)
+{
+    if (a < b)
+        return a;
+    return b;
+}
+
+int max(int a, int b)
+{
+    if (a > b)
+        return a;
+    return b;
+}
+
+void permutation(int size)
+{
+  int i;
+  for (i=0; i < size; i++)
+    ar[i] = i;
+  for (i=0; i < size-1; i++)
+    swap(&ar[i], &ar[Random(i,size)]);
+}
+
+void swap(int *a, int *b)
+{
+    int t;
+    t=*a;
+    *a=*b;
+    *b=t;
+}
+
+
+int Random(int left, int right)
+{
+	return left + rand() % (right-left);
+}
+
+
+/******************EXIT HANDLING FUNCTION*****************************/
+void CleanExit(int sig)
+{
+    /* make sure everything that needs to go to the screen gets there */
+    fflush(stdout);
+    gettimeofday(&end, NULL ); 
+    
+
+    if (sig != SIGHUP)
+        printf("\nExiting...\n");
+    else
+        printf("\nRestarting...\n");
+
+
+    puts("\n\n=============================================================");
+//	printf("\ndirs newly opened %ld\ndirs already_covered %ld\n",
+//			newly_covered, already_covered);
+	printf("\n%ld dirs traversed, coverage: %f\n", qcost,
+	       			qcost*1.0/topk_dir_num);
+    puts("=============================================================");
+    printf("Total Time:%ld milliseconds\n", 
+	(end.tv_sec-start.tv_sec)*1000+(end.tv_usec-start.tv_usec)/1000);
+    printf("Total Time:%ld seconds\n", 
+	(end.tv_sec-start.tv_sec)*1+(end.tv_usec-start.tv_usec)/1000000);
+
+	
+	printf("%ld\n", 
+    (end.tv_sec-start.tv_sec)*1+(end.tv_usec-start.tv_usec)/1000000);
+
+
+	exit(0);
 }
 
