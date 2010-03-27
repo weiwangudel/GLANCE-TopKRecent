@@ -63,6 +63,8 @@ struct dir_node *g_depth_stack[200];
 int g_stack_top = 0;
 double saved_min_age;
 double saved_max_age;
+double saved_low_age;  /* for `binary search` */
+double saved_high_age; /* for `binary search` */
 double topk_min_age;
 double topk_max_age;
 unsigned int    topk_dir_num = 1;
@@ -84,7 +86,7 @@ long int new_count_for_topk(int argc, char* argv[]);
 char *get_current_dir_name(void);
 double floor(double);
 int eligible_subdirs(struct dir_node sub_dir_ptr);
-void record_dir_output_file(struct dir_node *curPtr);
+int record_dir_output_file(struct dir_node *curPtr);
 void get_subdirs(const char *path, struct dir_node *curPtr);	
 int o_begin_sample_from(const char *sample_root, struct dir_node *curPtr);
 void set_range(int top);
@@ -150,7 +152,8 @@ int old_count_for_topk(int argc, char **argv)
 	topk_min_age = atof(argv[3]) * 24 * 3600;
 	topk_max_age = atof(argv[4]) * 24 * 3600; /* to seconds */
 	topk_dir_num = atoi(argv[5]);
-	
+	if (argc == 7)
+		the_K = atoi(argv[6]);	
 	/* Initialize the dir_node struct */
 	curPtr = &root;
 	curPtr->bool_dir_explored = 0;
@@ -166,10 +169,38 @@ int old_count_for_topk(int argc, char **argv)
 		o_begin_sample_from(root_abs_name, curPtr);
 		curPtr = &root;
 	}
+
+	cur_k = 0;
+	saved_low_age = topk_min_age;
+	saved_high_age = topk_max_age;
+
+	/* if the return of a certain range equals to the_k,
+	   or the return of the certain range doesn't equal to
+       (in other words, cannot equal to the_k) but the 
+	   top_min_age has got equal to top_max_age) */
+    while (cur_k != the_K && saved_low_age != saved_high_age) 
+	{
+	    cur_k = 0;
 	
-	/* get whatever the result of given range is */
-	collect_topk(&root);
+		/* get whatever the result of given range is */
+		collect_topk(&root);
+
+		/* update query range */
+		if (cur_k > the_K)
+		{
+			/* if becomes cur_k < the_K, facilitate restoration */
+			saved_high_age = topk_max_age;
+			topk_max_age = (saved_low_age + topk_max_age) / 2;
+		}
+		else
+		{	
+			saved_low_age = topk_max_age;
+			topk_max_age = (saved_high_age + topk_max_age) / 2;
+		}
+	    	
+	}
 	
+    
 	/* Exit and Display Statistic */
 	CleanExit (2);
 	return EXIT_SUCCESS;
@@ -394,8 +425,21 @@ void collect_topk(struct dir_node *rootPtr)
 			
 			/* find the eligible dirs and files for record (into queue)
 			 * and output (to display */
-			record_dir_output_file(cur_dir);
+			int early_quit;
+			early_quit = record_dir_output_file(cur_dir);
 			qcost++;			/* number of directories covered increment */
+			
+			/* cleanup queue and be ready to start all over again 
+			 * but not reset qcost as binary search will incur more cost
+             * and need to be counted in 
+			 */
+			if (early_quit == 1)  /* meaning the results are more than 2K */
+			{
+				clearQueue(&tempvec);
+				clearQueue(&level_q);
+				return;				
+			}
+				
         }
 		struct dir_node *temp;
         for (; emptyQueue(&tempvec) != 1; )
@@ -407,7 +451,7 @@ void collect_topk(struct dir_node *rootPtr)
 }
 
 
-void record_dir_output_file(struct dir_node *curPtr)
+int record_dir_output_file(struct dir_node *curPtr)
 {
 	int i;
     struct dirent **dir_namelist;
@@ -522,8 +566,14 @@ void record_dir_output_file(struct dir_node *curPtr)
 	//printf("eligible file numbers: %ld\n", sub_file_num);
 	for (i = 0; i < sub_file_num; i++)
 	{
-		printf("%s/%s\n", curPtr->dir_abs_path, file_namelist[i]->d_name);		
+		cur_k++;
+		printf("%s/%s\n", curPtr->dir_abs_path, file_namelist[i]->d_name);	
+		if (cur_k > 1.2 * the_K)
+		{
+			return 1;
+		}				    	
 	}
+	return 0;
 	
 }
 
