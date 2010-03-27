@@ -340,8 +340,9 @@ void get_subdirs(
 	//printf("diff of directory %s, %f\n", get_current_dir_name(), diff);
 	/* arbitrarily set(guess, gamble) min age to be half and make a
 	 * arithmetic progression */
-	curPtr->min_age = diff / 2;
-	curPtr->max_age = diff * 1.5;
+	curPtr->min_age = diff / 1.2;
+	//curPtr->max_age = diff * 1.5; /* * 1.5 is too big.
+	curPtr->max_age = diff * 1.2; 
 
 
 	curPtr->sub_dir_num = sub_dir_num;
