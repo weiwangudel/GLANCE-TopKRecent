@@ -70,6 +70,7 @@ double topk_max_age;
 unsigned int    topk_dir_num = 1;
 unsigned int    the_K;
 unsigned int    cur_k;
+int has_boundary_flag = 0;
 /*****************************************************************/
 
 
@@ -173,13 +174,17 @@ int old_count_for_topk(int argc, char **argv)
 	cur_k = 0;
 	saved_low_age = topk_min_age;
 	saved_high_age = topk_max_age;
+	has_boundary_flag = 0;
 
 	/* if the return of a certain range equals to the_k,
 	   or the return of the certain range doesn't equal to
        (in other words, cannot equal to the_k) but the 
 	   top_min_age has got equal to top_max_age) */
-    while (cur_k != the_K && saved_low_age != saved_high_age) 
-	{
+    while (cur_k != the_K && 
+		abs(saved_low_age - saved_high_age) > 0.1  ) 
+	{	
+		printf("cur_k:%d, the_K:%d, saved_low_age:%f, saved_high_age:%f\n",
+			cur_k, the_K, saved_low_age, saved_high_age);
 	    cur_k = 0;
 	
 		/* get whatever the result of given range is */
@@ -188,6 +193,7 @@ int old_count_for_topk(int argc, char **argv)
 		/* update query range */
 		if (cur_k > the_K)
 		{
+			has_boundary_flag = 1;
 			/* if becomes cur_k < the_K, facilitate restoration */
 			saved_high_age = topk_max_age;
 			topk_max_age = (saved_low_age + topk_max_age) / 2;
@@ -195,11 +201,31 @@ int old_count_for_topk(int argc, char **argv)
 		else
 		{	
 			saved_low_age = topk_max_age;
-			topk_max_age = (saved_high_age + topk_max_age) / 2;
+
+			/* there are two cases when cur_k < the_K:
+			 * 1) have encounter cur_k > the_K. there exists clear boundary
+			 * 2) have not. No clear boundary exist, double to detect boundary
+			 */
+			
+			/* exactly equal */
+			if (has_boundary_flag  == 0 )
+			{
+				topk_max_age *= 2;
+				saved_high_age = topk_max_age;
+			}
+			
+			/* saved_high_age is the clear boundary, and is larger than 
+			 * topk_max_age  
+			 */
+			else
+				topk_max_age = (saved_high_age + topk_max_age) / 2;
+			
 		}
 	    	
 	}
 	
+	printf("cur_k:%d, the_K:%d, saved_low_age:%f, saved_high_age:%f\n",
+			cur_k, the_K, saved_low_age, saved_high_age);
     
 	/* Exit and Display Statistic */
 	CleanExit (2);
