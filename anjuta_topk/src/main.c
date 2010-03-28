@@ -655,8 +655,9 @@ int get_eligible_file(const struct dirent *entry)
 	struct stat stat_buf;
 	double diff;
 
-	if ((strcmp(entry->d_name, ".") == 0) ||
-                        (strcmp(entry->d_name, "..") == 0))
+	/*if ((strcmp(entry->d_name, ".") == 0) ||
+                        (strcmp(entry->d_name, "..") == 0)) */
+	if (entry->d_type == DT_DIR)
 		return 0;
 	
 	/* make sure to be in the correct directory */
