@@ -412,7 +412,7 @@ void get_subdirs(
 	//curPtr->max_age = diff * 1.2; 
 
 	/* use professor's idea */
-	curPtr->min_age = diff;
+	curPtr->min_age = 0;
 	curPtr->max_age = diff;
 
 
@@ -431,7 +431,7 @@ void set_range(int top)
 	if (g_depth_stack[top]->min_age > saved_min_age)
 		g_depth_stack[top]->min_age = saved_min_age;
 
-	if (g_depth_stack[top]->max_age < saved_max_age)
+	if (g_depth_stack[top]->max_age > saved_max_age)
 		g_depth_stack[top]->max_age = saved_max_age;
 
 	/* save the [min, max] for parent use */
@@ -622,8 +622,7 @@ int eligible_subdirs(struct dir_node sub_dir)
 {
     //printf("sub_dir.max_age: %f\n", sub_dir.max_age);
     //printf("sub_dir.min_age: %f\n", sub_dir.min_age);
-	if ((sub_dir.max_age < topk_min_age) ||
-		(topk_max_age < sub_dir.min_age))
+	if (topk_max_age < sub_dir.max_age)
 	{
 		return 0;		
 	}
