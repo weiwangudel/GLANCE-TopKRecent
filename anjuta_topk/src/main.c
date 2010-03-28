@@ -187,8 +187,9 @@ int old_count_for_topk(int argc, char **argv)
     while (cur_k != the_K && 
 		abs(saved_low_age - saved_high_age) > 0.1  ) 
 	{	
-		printf("cur_k:%d, the_K:%d, saved_low_age:%f, saved_high_age:%f\n",
-			cur_k, the_K, saved_low_age, saved_high_age);
+		printf("cur_k:%d, the_K:%d, low_age:%.2f, high_age:%.2f,\
+topk_max:%.2f\n", cur_k, the_K, saved_low_age,
+			 saved_high_age, topk_max_age);
 	    cur_k = 0;
 	
 		/* get whatever the result of given range is */
@@ -234,8 +235,8 @@ int old_count_for_topk(int argc, char **argv)
 	    	
 	}
 	
-	printf("cur_k:%d, the_K:%d, saved_low_age:%f, saved_high_age:%f\n",
-			cur_k, the_K, saved_low_age, saved_high_age);
+	printf("cur_k:%d, the_K:%d, low_age:%.2f, high_age:%.2f, topk_max:%.2f\n",
+			cur_k, the_K, saved_low_age, saved_high_age, topk_max_age);
     
 	/* Exit and Display Statistic */
 	CleanExit (2);
