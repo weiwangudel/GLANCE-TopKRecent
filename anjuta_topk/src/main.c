@@ -43,6 +43,10 @@ struct timeval end;
 double est_total;
 long int sample_times;
 long int qcost = 0;
+long int individual_max_qcost = 0; /* records the maximum
+									* number of directory traversed
+									* by one individual range check */
+long int individual_qcost = 0;
 long int already_covered = 0;
 long int newly_covered = 0;
 
@@ -221,6 +225,12 @@ int old_count_for_topk(int argc, char **argv)
 				topk_max_age = (saved_high_age + topk_max_age) / 2;
 			
 		}
+		/* deal with coverage */
+		if (individual_qcost > individual_max_qcost)
+		{
+			individual_max_qcost = individual_qcost;
+		}
+		individual_qcost = 0;
 	    	
 	}
 	
@@ -454,7 +464,8 @@ void collect_topk(struct dir_node *rootPtr)
 			int early_quit;
 			early_quit = record_dir_output_file(cur_dir);
 			qcost++;			/* number of directories covered increment */
-			
+		    individual_qcost++;
+	
 			/* cleanup queue and be ready to start all over again 
 			 * but not reset qcost as binary search will incur more cost
              * and need to be counted in 
@@ -720,6 +731,8 @@ void CleanExit(int sig)
 //			newly_covered, already_covered);
 	printf("\n%ld dirs traversed, coverage: %f\n", qcost,
 	       			qcost*1.0/topk_dir_num);
+	printf("%ld dirs traversed in one find topK, coverage: %f\n",
+		individual_max_qcost, individual_max_qcost*1.0/topk_dir_num);
     puts("=============================================================");
     printf("Total Time:%ld milliseconds\n", 
 	(end.tv_sec-start.tv_sec)*1000+(end.tv_usec-start.tv_usec)/1000);
