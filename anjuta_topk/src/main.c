@@ -404,12 +404,15 @@ void get_subdirs(
 	}
 
 	diff = difftime(g_prog_start_time, stat_buf.st_mtime);
-	//printf("diff of directory %s, %f\n", get_current_dir_name(), diff);
-	/* arbitrarily set(guess, gamble) min age to be half and make a
+
+	/* arbitrarily set(guess, gamble) min age to be 1.2 ratio and make a
 	 * arithmetic progression */
-	curPtr->min_age = diff / 1.2;
-	//curPtr->max_age = diff * 1.5; /* * 1.5 is too big.
-	curPtr->max_age = diff * 1.2; 
+	//curPtr->min_age = diff / 1.2;
+	//curPtr->max_age = diff * 1.2; 
+
+	/* use professor's idea */
+	curPtr->min_age = diff;
+	curPtr->max_age = diff;
 
 
 	curPtr->sub_dir_num = sub_dir_num;
@@ -664,7 +667,7 @@ int get_eligible_file(const struct dirent *entry)
 	}
 
 	diff = difftime(g_prog_start_time, stat_buf.st_mtime);
-	//printf("diff in eligible file:%f", diff);
+
 	/* find most recent files */
 	if (diff < topk_max_age && diff > topk_min_age)
 		return 1;	
